@@ -1,0 +1,96 @@
+---
+title: "Assignment 1"
+author: "Tom Svendsen"
+format: revealjs
+editor: visual
+code-fold: true
+---
+
+## HTML presentation of Assignment 1
+
+```{r}
+# Install necessary packages if not installed
+if (!requireNamespace("tidyverse", quietly = TRUE)) install.packages("tidyverse")
+if (!requireNamespace("zoo", quietly = TRUE)) install.packages("zoo")
+if (!requireNamespace("lubridate", quietly = TRUE)) install.packages("lubridate")
+
+# Load necessary libraries
+library(tidyverse)
+library(zoo)
+library(lubridate) 
+
+# Read Data from URLs
+df_lt <- read_table2("http://vortex.nsstc.uah.edu/data/msu/v6.0/tlt/uahncdc_lt_6.0.txt") 
+df_mt <- read_table2("http://vortex.nsstc.uah.edu/data/msu/v6.0/tmt/uahncdc_mt_6.0.txt") 
+df_tp <- read_table2("http://vortex.nsstc.uah.edu/data/msu/v6.0/ttp/uahncdc_tp_6.0.txt") 
+df_ls <- read_table2("http://vortex.nsstc.uah.edu/data/msu/v6.0/tls/uahncdc_ls_6.0.txt")
+
+# Function to select Globe and mutate date + drop NA
+select_globe_and_mutate <- function(df) {
+  df %>%
+    select(Year, Mo, Globe) %>% 
+    mutate(Date = ymd(paste(Year, Mo, 1, sep="-")),
+           Year = year(Date), 
+           Month = month(Date)) %>%
+    select(Year, Month, Date, Globe) %>%  
+    mutate(across(where(is.character), as.numeric)) %>% 
+    drop_na()
+}
+
+df_lt_globe <- select_globe_and_mutate(df_lt)
+df_mt_globe <- select_globe_and_mutate(df_mt)
+df_tp_globe <- select_globe_and_mutate(df_tp)
+df_ls_globe <- select_globe_and_mutate(df_ls)
+
+# Function to calculate 12-month moving average
+compute_moving_avg <- function(df) {
+  df %>%
+    arrange(Date) %>%
+    mutate(Globe_MA = rollmean(Globe, k = 12, fill = NA, align = "right"))
+}
+
+df_lt_ma <- compute_moving_avg(df_lt_globe)
+df_mt_ma <- compute_moving_avg(df_mt_globe)
+df_tp_ma <- compute_moving_avg(df_tp_globe)
+df_ls_ma <- compute_moving_avg(df_ls_globe)
+
+# Merge Data and Compute 'Average' of Moving Averages
+df_combined <- df_lt_ma %>%
+  rename(LT_MA = Globe_MA) %>%
+  inner_join(df_mt_ma %>% rename(MT_MA = Globe_MA), by = "Date") %>%
+  inner_join(df_tp_ma %>% rename(TP_MA = Globe_MA), by = "Date") %>%
+  inner_join(df_ls_ma %>% rename(LS_MA = Globe_MA), by = "Date") %>%
+  mutate(Average = rowMeans(select(., LT_MA, MT_MA, TP_MA, LS_MA), na.rm = TRUE))
+
+# Filter Data from January 1980 Onwards and Remove NAs
+df_filtered <- df_combined %>%
+  filter(Date >= as.Date("1980-01-01")) %>%
+  drop_na(LT_MA, MT_MA, TP_MA, LS_MA, Average)
+
+# Reshape Data for ggplot2
+df_long <- df_filtered %>%
+  pivot_longer(cols = c(LT_MA, MT_MA, TP_MA, LS_MA, Average), 
+               names_to = "Layer", values_to = "Temp_Anomaly") %>%
+  mutate(Layer = factor(Layer, levels = c("LT_MA", "MT_MA", "TP_MA", "LS_MA", "Average"),
+                        labels = c("Lower Troposphere", 
+                                   "Mid Troposphere", 
+                                   "Tropopause", 
+                                   "Lower Stratosphere", 
+                                   "Overall Average")))
+
+# Plotting the data
+ggplot(df_long, aes(x = Date, y = Temp_Anomaly, color = Layer)) +
+  geom_line(size = 1) +
+  labs(title = "12-Month Moving Average of Atmospheric Temperatures",
+       subtitle = "From January 1980 Onwards",
+       x = "Year",
+       y = "Temperature Anomaly (C)",
+       color = "Atmospheric Layer") +
+  theme_minimal() +
+  scale_color_manual(values = c("Lower Troposphere" = "red",
+                                "Mid Troposphere" = "blue",
+                                "Tropopause" = "green",
+                                "Lower Stratosphere" = "purple",
+                                "Overall Average" = "black"))
+
+```
