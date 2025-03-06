@@ -1,0 +1,280 @@
+---
+title: "Assignment 3"
+author: "Tom Svendsen"
+format: html
+editor: visual
+---
+
+------------------------------------------------------------------------
+
+# **Task 1:**
+
+```{r}
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-height: 10
+#| fig-width: 15
+# Install necessary packages if not installed
+if (!requireNamespace("readxl", quietly = TRUE)) install.packages("readxl")
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+
+# Load necessary packages
+library(readxl)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+# Define variables for file_path and url
+file_path <- "ukraine_support.xlsx"
+url <- "https://www.ifw-kiel.de/fileadmin/Dateiverwaltung/IfW-Publications/fis-import/f319e1c8-5654-4cd6-b4c7-5722ae437d30-Ukraine_Support_Tracker_Release_21.xlsx"
+
+# Download file if it does not exist
+if (!file.exists(file_path)) {
+  download.file(url, file_path, mode = "wb")
+}
+
+# Read necessary data cells from sheet 12
+ukraine_support_df <- read_excel(file_path, sheet = 12, range = "B11:F52")
+
+# Rename columns for clarity
+colnames(ukraine_support_df) <- c("Country", "Financial","Humanitarian", "Military", "Refugee cost estimation")
+
+# Convert data from wide format to long format for stacked bars
+ukraine_long <- ukraine_support_df %>%
+  pivot_longer(cols = c("Financial","Humanitarian", "Military", "Refugee cost estimation"), 
+               names_to = "Aid_Type", values_to = "Amount") %>%
+  mutate(Aid_Type = factor(Aid_Type, levels = c("Refugee cost estimation", "Military", "Humanitarian", "Financial")))  # Custom order
+
+# Create stacked bar plot (horizontal)
+ggplot(ukraine_long, aes(x = reorder(Country, Amount, sum), y = Amount, fill = Aid_Type)) +
+  geom_bar(stat = "identity", color = "black", width = 0.7) +  # Adjust width to move bars closer
+  labs(title = "Figure 6. Total Bilateral Commitments plus Refugee Costs (Billion Euros)",
+       x = NULL,  # Remove x-axis label (countries are self-explanatory)
+       y = "billion Euros",  # Correct label for horizontal axis
+       fill = "Aid Type") +
+  scale_y_continuous(limits = c(0,120), breaks = seq(0, 120, by = 5), labels = scales::comma) +  # Format y-axis for readability
+  scale_fill_manual(values = c("Financial" = "#0070c0", 
+                               "Humanitarian" = "#92d050", 
+                               "Military" = "#c00000", 
+                               "Refugee cost estimation" = "#0f9ed5")) +  # Match colors to Figure 6
+  coord_flip(clip = "off") +  # Prevents axis from being clipped
+  theme_minimal() +  # Use classic theme to fix axis alignment
+  theme(
+    plot.title = element_text(family = "sans", face = "bold.italic", size = 14, color = "#274e13"),
+    axis.text.y = element_text(family = "sans", face = "bold", size = 9),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray", linetype = "solid"),
+    panel.grid.minor.x = element_blank()
+  )
+```
+
+------------------------------------------------------------------------
+
+# **Task 2:**
+
+```{r}
+#| echo: true
+#| message: false
+#| warning: false
+# Install necessary packages if not installed
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("lubridate", quietly = TRUE)) install.packages("lubridate")
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("scales", quietly = TRUE)) install.packages("scales")
+if (!requireNamespace("gapminder", quietly = TRUE)) install.packages("gapminder")
+
+# Load necessary libraries
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(scales)
+library(gapminder)
+
+# Read the data
+data <- read.csv("https://raw.githubusercontent.com/ywchiu/rcookbook/master/chapter7/superstore_sales.csv")
+
+# Convert Order.Date to Date type
+data$Order.Date <- as.Date(data$Order.Date)
+
+# Find total sales per month for each year
+monthsales <- data %>%
+  mutate(Year = year(Order.Date), Month = month(Order.Date, label = TRUE)) %>% # Extract Year and Month
+  group_by(Year, Month) %>%
+  summarise(Total.Sales = sum(Sales, na.rm = TRUE)) %>%
+  arrange(Year, desc(Total.Sales)) # Sort by year first, then highest sales per year
+
+# Find the best month for each year
+best_months <- monthsales %>%
+  group_by(Year) %>%
+  slice_max(Total.Sales, n = 1) # Get the month with the highest sales per year
+
+# Print the best months
+print(best_months)
+
+# Create bar plot
+ggplot(monthsales, aes(x = Month, y = Total.Sales, fill = as.factor(Year))) +
+  geom_bar(stat = "identity", position = "dodge") + # Dodge bars to show yearly comparison
+  labs(title = "Total Sales by Month for Each Year",
+       x = "Month",
+       y = "Total Sales",
+       fill = "Year") +
+  scale_y_continuous(labels = scales::comma) +  # Format y-axis labels
+  theme_minimal()
+
+# Task 2.2
+bestprovince <- data %>%
+  group_by(Province) %>%
+  summarise(Total.Sales = sum(Sales, na.rm = TRUE)) %>%
+  arrange(desc(Total.Sales))
+
+# Create a bar plot
+ggplot(bestprovince, aes(x = reorder(Province, Total.Sales), y = Total.Sales)) + 
+  geom_col(fill = "steelblue") + 
+  labs(title = "Total Sales by Province",
+       x = "Province",
+       y = "Total Sales") +
+  scale_y_continuous(labels = scales::comma) +  # Format y-axis labels
+  coord_flip() +  # Flip for better readability if many provinces
+  theme_minimal()
+
+# Task 2.3
+bestprovincecat <- data %>%
+  group_by(Province,Product.Category) %>%
+  summarise(Total.Sales = sum(Sales, na.rm = TRUE)) %>%
+  arrange(desc(Total.Sales))
+
+# Create a bar plot
+ggplot(bestprovincecat, aes(x = Province, y = Total.Sales, fill = as.factor(Product.Category))) +
+  geom_bar(stat = "identity", position = "dodge") + # Dodge bars to show yearly comparison
+  labs(title = "Best Category by Province",
+       x = "Province",
+       y = "Total Sales",
+       fill = "Product Category") +
+  scale_y_continuous(labels = scales::comma) +  # Format y-axis labels
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x-axis labels
+```
+
+------------------------------------------------------------------------
+
+# **Task 3:** 
+
+```{r}
+#| echo: true
+#| message: false
+#| warning: false
+# Install necessary packages if not installed
+if (!requireNamespace("gapminder", quietly = TRUE)) install.packages("gapminder")
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("scales", quietly = TRUE)) install.packages("scales")  # Needed for log transformation
+
+# Load necessary libraries
+library(gapminder)
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+# Task 3.a
+asia_life <- gapminder %>%
+  filter(continent == "Asia") %>%
+  group_by(continent,year) %>%
+  summarise(min.lfexp = min(lifeExp),
+            max.lfexp = max(lifeExp)
+  )
+
+print(asia_life) # Display the minimum and maximum life expectancy values
+
+# Task 3.b
+asia_life <- asia_life %>%
+  mutate(
+    min.perc.diff = 100 * (min.lfexp - lag(min.lfexp)) / lag(min.lfexp),
+    max.perc.diff = 100 * (max.lfexp - lag(max.lfexp)) / lag(max.lfexp),
+    min.log.diff = 100 * c(NA, diff(log(min.lfexp))),
+    max.log.diff = 100 * c(NA, diff(log(max.lfexp)))
+    )
+
+print(asia_life) # Display the percentange and log differentials between years
+
+# Task 3.c
+# Compute average life expectancy and GDP per country
+country_stats <- gapminder %>%
+  group_by(country, continent) %>%
+  summarise(
+    avg_lifeExp = mean(lifeExp, na.rm = TRUE),
+    avg_gdpPercap = mean(gdpPercap, na.rm = TRUE)
+  )
+
+# Get the top 20 countries by life expectancy
+top20_lifeExp <- country_stats %>%
+  arrange(desc(avg_lifeExp)) %>%
+  head(20)
+
+# Get the top 20 countries by GDP per capita
+top20_gdp <- country_stats %>%
+  arrange(desc(avg_gdpPercap)) %>%
+  head(20)
+
+# Plot Top 20 Countries by Average Life Expectancy
+ggplot(top20_lifeExp, aes(x = avg_lifeExp, y = reorder(country, avg_lifeExp))) +
+  geom_point(color = "blue", size = 3) +
+  labs(title = "Top 20 Countries by Average Life Expectancy",
+       x = "Average Life Expectancy (Years)", y = "Country") +
+  theme_minimal()
+
+# Plot Top 20 Countries by Average GDP per Capita
+ggplot(top20_gdp, aes(x = avg_gdpPercap, y = reorder(country, avg_gdpPercap))) +
+  geom_point(color = "red", size = 3) +
+  labs(title = "Top 20 Countries by Average GDP per Capita",
+       x = "Average GDP per Capita", y = "Country") +
+  theme_minimal()
+
+# Task 3.d
+# Plot Average Life Expectancy vs. GDP per Capita
+ggplot(country_stats, aes(x = avg_gdpPercap, y = avg_lifeExp, color = continent)) +
+  geom_point(size = 3, alpha = 0.7) +  # Use alpha to slightly fade points for better visibility
+  labs(title = "Average Life Expectancy vs. GDP per Capita",
+       x = "Average GDP per Capita (log scale)", 
+       y = "Average Life Expectancy (Years)", 
+       color = "Continent") +
+  scale_x_log10(labels = scales::comma) +  # Transform x-axis to log scale
+  scale_y_log10(labels = scales::comma) +  # Transform y-axis to log scale
+  theme_minimal()
+
+# Task 3.e
+# Compute life expectancy gain (compared to 1952)
+lifeExp_gain <- gapminder %>%
+  group_by(country) %>%
+  mutate(
+    first_year_lifeExp = lifeExp[year == 1952],  # Get 1952 value for each country
+    lifeExp_gain = lifeExp - first_year_lifeExp  # Compute gain
+  )
+
+# View results
+head(lifeExp_gain)
+
+# Compute life expectancy difference between consecutive years
+lifeExp_diff <- gapminder %>%
+  group_by(country) %>%
+  arrange(year) %>%  # Ensure correct order
+  mutate(
+    lifeExp_change = lifeExp - lag(lifeExp)  # Compute (lifeExp in year t) - (lifeExp in year t-1)
+  ) %>%
+  ungroup()
+
+# Find the sharpest 5-year drop in life expectancy within each continent
+sharpest_drops <- lifeExp_diff %>%
+  group_by(continent, country) %>%
+  summarise(min_lifeExp_change = min(lifeExp_change, na.rm = TRUE)) %>%
+  ungroup() %>%
+  arrange(min_lifeExp_change) %>%  # Sort to see the sharpest drop first
+  group_by(continent) %>%
+  slice_min(min_lifeExp_change, n = 1)  # Get the country with the worst drop per continent
+
+# View results
+print(sharpest_drops)
+```
